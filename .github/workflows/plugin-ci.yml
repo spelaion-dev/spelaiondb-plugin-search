@@ -13,7 +13,8 @@
 #
 # A plugin whose tests need a server keeps how to start it in its own repository: an
 # executable `ci/services.sh` (run on Linux before the tests; Docker is there) and, for the
-# variables its tests read, the `test-env` input.
+# variables its tests read, the `test-env` input. One with tests `cargo test` does not reach
+# (a patched library's own) runs them from an executable `ci/more-tests.sh`.
 name: Plugin CI
 
 on:
@@ -64,6 +65,11 @@ jobs:
           printf '%s\n' "$TEST_ENV" | grep -E '^[A-Z_][A-Z0-9_]*=' >> "$GITHUB_ENV" || true
       # The engine's own tests and the conformance set, which starts the plugin's program.
       - run: cargo test --locked
+      # What `cargo test` does not reach: the tests of a patched library under vendor/, which
+      # is a crate of its own.
+      - name: The plugin's other tests
+        run: |
+          if [ -x ci/more-tests.sh ]; then ci/more-tests.sh; else echo "no ci/more-tests.sh: nothing more to run"; fi
 
   windows:
     name: Windows · clippy and tests

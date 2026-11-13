@@ -55,6 +55,8 @@ before.
 5. **If the tests need a server**, add an executable `ci/services.sh` that starts it (Docker
    Compose, waiting until it is healthy) and name where it is in `test-env`. A test that needs
    a server and does not find its variable is skipped and says so, as in SpelaionDB.
+   A patched library under `vendor/` is a crate of its own, which `cargo test` does not reach:
+   run its tests from an executable `ci/more-tests.sh`.
 6. **Protect `main`**: pull requests only, the checks of `CI` required, no force-push, no
    deletion, owners' review for the files in `.github/CODEOWNERS`.
 7. **No secret, ever.** Nothing here signs anything: a release reaches users only when
