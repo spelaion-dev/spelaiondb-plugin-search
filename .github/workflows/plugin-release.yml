@@ -80,16 +80,10 @@ jobs:
             *) file=$PROGRAM ;;
           esac
           cp "$out/$file" LICENSE pack/
-          case "$target" in
-            *windows*)
-              archive=$PROGRAM-$VERSION-$target.zip
-              (cd pack && 7z a -tzip "../dist/$archive" "$file" LICENSE > /dev/null)
-              ;;
-            *)
-              archive=$PROGRAM-$VERSION-$target.tar.gz
-              tar -C pack -czf "dist/$archive" "$file" LICENSE
-              ;;
-          esac
+          # A .tar.gz on every platform, Windows too: SpelaionDB unpacks one kind of archive,
+          # and only the program in it.
+          archive=$PROGRAM-$VERSION-$target.tar.gz
+          tar -C pack -czf "dist/$archive" "$file" LICENSE
           size=$(wc -c < "dist/$archive" | tr -d ' ')
           hash "dist/$archive" > "dist/$archive.sha256"
           # This platform's table of SpelaionDB's plugins.toml.
@@ -146,4 +140,4 @@ jobs:
           } > notes.md
           cat notes.md
           gh release create "$GITHUB_REF_NAME" --title "$program $version" --notes-file notes.md \
-            built/*/*.zip built/*/*.tar.gz built/*/*.sha256
+            built/*/*.tar.gz built/*/*.sha256
