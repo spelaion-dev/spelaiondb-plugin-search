@@ -3,29 +3,7 @@
 //! order the contract says, fails without hanging, obeys a cancel while a statement runs and
 //! ends when its input closes. What the engine's types look like is the engine's own tests.
 
-use spelaion_driver_api::ConnectParams;
-use spelaion_plugin_host::conformance::{Target, assert_conforms};
-
-const PROGRAM: &str = env!("CARGO_BIN_EXE_spelaiondb-plugin-example");
-
-#[tokio::test]
-async fn the_plugin_conforms() {
-    let target = Target {
-        program: PROGRAM.into(),
-        engine: "example".into(),
-        // A plugin of a server reads where it is from the environment, as SpelaionDB's own
-        // tests do, and skips this test (saying so) when it is not set.
-        params: ConnectParams {
-            database: "main".into(),
-            ..Default::default()
-        },
-        one_row: "select 1".into(),
-        refused: "select * from a_table_that_is_not_there".into(),
-        // A statement that runs until it is cancelled; `None` for an engine that cannot cancel.
-        slow: Some("wait".into()),
-    };
-    assert_conforms(&target).await;
-}
+const PROGRAM: &str = env!("CARGO_BIN_EXE_spelaiondb-plugin-search");
 
 /// `plugin.toml` is what SpelaionDB's pin says of this plugin: it must be what the program
 /// says of itself.

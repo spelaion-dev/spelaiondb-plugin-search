@@ -1,83 +1,51 @@
-# spelaiondb-plugin-template
+# Search engines for SpelaionDB
 
-What a plugin of [SpelaionDB](https://github.com/spelaion-dev/spelaiondb) starts from, and the
-checks and the release every plugin of ours shares.
+Elasticsearch, OpenSearch, Solr and Meilisearch, served through SpelaionDB's plugin protocol 1.1.
+The core reads an HTTP console request (`METHOD /path`, then an optional JSON body); this plugin
+sends that canonical request once and returns Arrow results. It never parses SQL or decides
+what may run. Each connection uses its core-provided tunnel address, with TLS against the real
+host, without environment proxies or redirects. Credentials arrive only in `connect`.
 
-SpelaionDB's engines are programs it starts and talks to over their standard input and output
-(its ADR-041). Each of ours lives in its own repository, `spelaiondb-plugin-<engine>`, and
-SpelaionDB pins by hash the exact release it was tested with (its ADR-042). This repository is
-two things:
+## Connections
 
-- **A plugin to copy**: a made-up engine, `example`, with everything a plugin's repository
-  has: the driver (`src/lib.rs`), the program (`src/bin/`), the conformance test, `plugin.toml`,
-  the rules (`AGENTS.md`).
-- **The shared workflows**: `.github/workflows/plugin-ci.yml` and `plugin-release.yml`. Every
-  plugin calls them by commit, so a change to how plugins are checked or released is made
-  once, here.
+The engine name is `elasticsearch`, `opensearch`, `solr` or `meilisearch`. The usual HTTP ports
+are 9200, 9200, 8983 and 7700. A nonempty user selects HTTP Basic authentication; with no user,
+the password is an Elasticsearch API key, or a Meilisearch bearer token. OpenSearch and Solr
+use Basic authentication; token authentication for them is not implemented. TLS modes and custom certificate authorities follow SpelaionDB's contract.
 
-Protocol: [SpelaionDB's plugin protocol](https://github.com/spelaion-dev/spelaiondb/blob/dev/docs/plugin-protocol.md),
-version 1.0, experimental until SpelaionDB 1.0. License: Apache-2.0.
+The explorer lists indexes as collections under `indexes`. Solr currently lists standalone
+cores; SolrCloud collection discovery is not implemented. Opening one runs a visible, bounded
+request of at most 200 hits. Elasticsearch/OpenSearch hits keep `_index`, `_id`, `_score` and
+source fields; nested values and aggregations remain JSON. The final `…` column preserves late
+fields and values whose type differs from the first batch. Responses are bounded at 64 MiB.
 
-## Creating a plugin's repository
+This first version has no SQL endpoint, pagination beyond the submitted request, statement
+cancellation, read-only mode, agents, relational edits, imports or streaming exports. The HTTP
+connection is opened again when idle; a submitted request is never retried.
 
-Creating the repository and protecting its branch is done by an owner of the organisation, or
-with their yes each time. A plugin's repository is created when its engine's work starts, not
-before.
+## Verification
 
-1. **Create `spelaion-dev/spelaiondb-plugin-<engine>` from this template** (public, Apache-2.0).
-2. **Rename.** `spelaiondb-plugin-example` → `spelaiondb-plugin-<engine>` in `Cargo.toml` (the
-   package, the binary and its path), in `src/bin/`, in the tests and in `README.md`; the library
-   (`spelaion_driver_example`) to your driver's name; `engines` in `plugin.toml`.
-3. **Put your driver in `src/`**, with its own tests in `tests/`. A driver that moves out of
-   SpelaionDB's repository comes whole, with its tests, and with the patched library it uses
-   (`vendor/<library>`, its `PATCHED.md`, and the `[patch.crates-io]` entry), which is then under
-   this repository's `CODEOWNERS`.
-4. **Point the two workflows at the shared ones**, by commit:
+Start `docker compose -p search-ci -f ci/compose.yaml up -d --wait`, then set:
 
-   ```yaml
-   # .github/workflows/ci.yml
-   jobs:
-     ci:
-       uses: spelaion-dev/spelaiondb-plugin-template/.github/workflows/plugin-ci.yml@<commit>
-       with:
-         test-env: |
-           SPELAION_TEST_PG=127.0.0.1:15432
-
-   # .github/workflows/release.yml
-   jobs:
-     release:
-       permissions:
-         contents: write
-       uses: spelaion-dev/spelaiondb-plugin-template/.github/workflows/plugin-release.yml@<commit>
-   ```
-
-   and delete `plugin-ci.yml` and `plugin-release.yml` from the new repository: they live here.
-5. **If the tests need a server**, add an executable `ci/services.sh` that starts it (Docker
-   Compose, waiting until it is healthy) and name where it is in `test-env`. A test that needs
-   a server and does not find its variable is skipped and says so, as in SpelaionDB.
-   A patched library under `vendor/` is a crate of its own, which `cargo test` does not reach:
-   run its tests from an executable `ci/more-tests.sh`.
-6. **Protect `main`**: pull requests only, the checks of `CI` required, no force-push, no
-   deletion, owners' review for the files in `.github/CODEOWNERS`.
-7. **No secret, ever.** Nothing here signs anything: a release reaches users only when
-   SpelaionDB's repository pins its hashes.
-
-## Releasing a plugin
-
-Push a tag `vX.Y.Z` that is the version in `Cargo.toml`. The release builds the four platforms
-and its notes carry the pin for SpelaionDB's `plugins.toml`. Moving that pin is a pull request
-in SpelaionDB's repository, whose CI runs SpelaionDB's tests through that exact build.
-
-## Working on it
-
-```bash
-cargo test
+```
+SPELAION_TEST_ELASTICSEARCH=127.0.0.1:19200
+SPELAION_TEST_OPENSEARCH=127.0.0.1:19201
+SPELAION_TEST_SOLR=127.0.0.1:18983
+SPELAION_TEST_MEILISEARCH=127.0.0.1:17700
 ```
 
-runs the protocol's conformance set against the example plugin's own program. To try a plugin
-with SpelaionDB, point a development build of it at the program
-(`SPELAION_DEV_PLUGIN_<ENGINE>=/path/to/the/program`, in SpelaionDB's repository; a release
-build ignores that variable).
+`cargo test` runs each real engine through the plugin protocol, inserts a fixture, lists its
+index and queries it, then runs the SDK's conformance set. Missing variables skip server tests;
+a skipped test does not count as verification. Also run `cargo fmt --all --check`,
+`cargo clippy --all-targets -- -D warnings` and `cargo deny check`.
 
-`AGENTS.md` has the rules. Reports and questions go to
-[SpelaionDB's issues](https://github.com/spelaion-dev/spelaiondb/issues).
+In SpelaionDB's development build point all four `SPELAION_DEV_PLUGIN_<ENGINE>` variables at
+this plugin executable and run `cargo test -p spelaion-core --test search` with the same servers.
+Release builds accept only the published, verified build pinned in SpelaionDB's `plugins.toml`.
+
+## Publication
+
+SDB-183's first integration is prepared here. A release reaches users only after all four
+platforms build in the shared release workflow and SpelaionDB pins those verified archives.
+The core deliberately keeps the picker entries unavailable until that official pin exists;
+a development build can exercise them through its explicit plugin overrides.
