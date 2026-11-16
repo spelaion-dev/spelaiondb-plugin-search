@@ -17,7 +17,8 @@ The explorer lists indexes as collections under `indexes`. Solr currently lists 
 cores; SolrCloud collection discovery is not implemented. Opening one runs a visible, bounded
 request of at most 200 hits. Elasticsearch/OpenSearch hits keep `_index`, `_id`, `_score` and
 source fields; nested values and aggregations remain JSON. The final `…` column preserves late
-fields and values whose type differs from the first batch. Responses are bounded at 64 MiB.
+fields and values whose type differs from the first batch. Colliding source/metadata names
+are prefixed until unique, so neither overwrites the other. Responses are bounded at 64 MiB.
 
 This first version has no SQL endpoint, pagination beyond the submitted request, statement
 cancellation, read-only mode, agents, relational edits, imports or streaming exports. The HTTP

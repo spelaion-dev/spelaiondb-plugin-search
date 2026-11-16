@@ -35,20 +35,16 @@ fn documents(engine: &str, answer: Value) -> Vec<Value> {
                 }
                 if let Some(source) = hit["_source"].as_object() {
                     for (key, value) in source {
-                        if !row.contains_key(key) {
-                            row.insert(key.clone(), value.clone());
-                        } else {
-                            row.insert(format!("_source.{key}"), value.clone());
-                        }
+                        insert_unique(&mut row, key, value.clone(), "_source.");
                     }
                 }
                 for (key, value) in hit.as_object().into_iter().flatten() {
                     if !matches!(key.as_str(), "_index" | "_id" | "_score" | "_source") {
-                        row.insert(key.clone(), value.clone());
+                        insert_unique(&mut row, key, value.clone(), "_hit.");
                     }
                 }
                 if let Some(aggs) = answer.get("aggregations") {
-                    row.insert("aggregations".into(), aggs.clone());
+                    insert_unique(&mut row, "aggregations", aggs.clone(), "_response.");
                 }
                 Value::Object(row)
             })
@@ -70,6 +66,16 @@ fn documents(engine: &str, answer: Value) -> Vec<Value> {
         Value::Array(rows) => rows,
         other => vec![other],
     }
+}
+
+/// A source field may itself have a reserved or prefixed name. Find a free name rather than
+/// allowing either a hit's metadata or a response aggregation to overwrite source data.
+fn insert_unique(row: &mut Map<String, Value>, key: &str, value: Value, prefix: &str) {
+    let mut name = key.to_string();
+    while row.contains_key(&name) {
+        name = format!("{prefix}{name}");
+    }
+    row.insert(name, value);
 }
 
 pub fn events(engine: &str, answer: Value, batch_size: usize) -> Result<Vec<ExecEvent>> {
@@ -207,6 +213,29 @@ pub fn events(engine: &str, answer: Value, batch_size: usize) -> Result<Vec<Exec
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn metadata_cannot_overwrite_source_values_with_the_same_name() {
+        let rows = documents(
+            "elasticsearch",
+            json!({
+                "hits":{"hits":[{"_index":"orders","_id":"one","_score":1.0,
+                    "_source":{"fields":"source fields","aggregations":"source aggregations",
+                        "_source._id":"literal field","_id":"source id"},
+                    "fields":{"calculated":[42]}}]},
+                "aggregations":{"total":{"value":42}}
+            }),
+        );
+        assert_eq!(rows[0]["fields"], "source fields");
+        assert_eq!(rows[0]["aggregations"], "source aggregations");
+        assert_eq!(rows[0]["_source._id"], "literal field");
+        assert_eq!(rows[0]["_source._source._id"], "source id");
+        assert_eq!(rows[0]["_hit.fields"], json!({"calculated":[42]}));
+        assert_eq!(
+            rows[0]["_response.aggregations"],
+            json!({"total":{"value":42}})
+        );
+    }
+
     #[test]
     fn late_fields_and_changed_types_survive_in_the_overflow_column() {
         let events = events(
